@@ -1,5 +1,6 @@
 import html
 import os
+import ssl
 from typing import Any
 
 import pymongo
@@ -26,7 +27,17 @@ def get_env(name: str, default: str | None = None) -> str:
 @st.cache_resource
 def get_collection() -> pymongo.collection.Collection:
     mongo_uri = get_env("MONGO_URI")
-    client = pymongo.MongoClient(mongo_uri)
+    
+    # Configure MongoDB client with proper TLS settings for Atlas
+    client = pymongo.MongoClient(
+        mongo_uri,
+        tls=True,
+        tlsAllowInvalidCertificates=False,
+        serverSelectionTimeoutMS=30000,
+        connectTimeoutMS=30000,
+        socketTimeoutMS=30000,
+    )
+    
     database_name = os.getenv("MONGO_DB", DEFAULT_DB)
     collection_name = os.getenv("MONGO_COLLECTION", DEFAULT_COLLECTION)
     return client[database_name][collection_name]
@@ -185,7 +196,39 @@ def apply_styles() -> None:
                 margin: 0;
             }
 
-            div[data-testid="stTextInput"] input,
+            /* Style the search form */
+            div[data-testid="stForm"] {
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                border-radius: 12px;
+                padding: 1.35rem 1.5rem 1.45rem;
+                background: rgba(15, 23, 42, 0.88);
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.20);
+                margin-bottom: 1.2rem;
+            }
+
+            .search-label {
+                color: #f8fafc;
+                font-size: 1.05rem;
+                font-weight: 600;
+                margin: 0 0 0.85rem;
+            }
+
+            div[data-testid="stTextInput"] input {
+                border-radius: 10px;
+                border: 1.5px solid rgba(148, 163, 184, 0.38);
+                background: rgba(2, 6, 23, 0.75);
+                color: #f8fafc;
+                font-size: 1.05rem;
+                padding: 0.85rem 1rem;
+                transition: all 0.2s ease;
+            }
+
+            div[data-testid="stTextInput"] input:focus {
+                border-color: rgba(94, 234, 212, 0.65);
+                box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.15);
+                background: rgba(2, 6, 23, 0.95);
+            }
+
             div[data-testid="stNumberInput"] input {
                 border-radius: 8px;
                 border: 1px solid rgba(148, 163, 184, 0.34);
@@ -193,10 +236,31 @@ def apply_styles() -> None:
                 color: #f8fafc;
             }
 
-            div[data-testid="stButton"] button {
-                border-radius: 8px;
-                min-height: 2.75rem;
+            div[data-testid="stButton"] button[kind="primary"] {
+                border-radius: 10px;
+                min-height: 3.2rem;
                 font-weight: 700;
+                font-size: 1.05rem;
+                background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+                border: none;
+                box-shadow: 0 8px 24px rgba(20, 184, 166, 0.30);
+                transition: all 0.2s ease;
+            }
+
+            div[data-testid="stButton"] button[kind="primary"]:hover {
+                background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+                box-shadow: 0 12px 32px rgba(20, 184, 166, 0.40);
+                transform: translateY(-1px);
+            }
+
+            .search-hint {
+                color: #94a3b8;
+                font-size: 0.88rem;
+                margin-top: 0.65rem;
+            }
+
+            .search-hint strong {
+                color: #cbd5e1;
             }
 
             .result-card {
@@ -410,33 +474,38 @@ def render_movie_card(item: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Movie Semantic Search", page_icon="🎬", layout="wide")
+    st.set_page_config(page_title="Movie Finder", page_icon="🎬", layout="wide")
     apply_styles()
 
     st.markdown(
         """
         <section class="hero">
-            <h1>Movie Semantic Search</h1>
-            <p>Describe the story, mood, setting, or characters you have in mind. Atlas Vector Search will surface movies by meaning, with posters, ratings, cast, and the original search score.</p>
+            <h1>Movie Finder</h1>
+            <p>Find movies by story, mood, or scene using semantic search powered by MongoDB Atlas and Hugging Face embeddings.</p>
         </section>
         """,
         unsafe_allow_html=True,
     )
 
-    with st.container():
-        search_col, count_col, button_col = st.columns([5, 1.35, 1], vertical_alignment="bottom")
-        with search_col:
+    with st.form("search_form", clear_on_submit=False):
+        st.markdown('<div class="search-label">What kind of movie are you looking for?</div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([5, 1])
+        with col1:
             query = st.text_input(
-                "Search by meaning",
-                placeholder="imaginary characters from outer space at war",
+                "Search query",
+                placeholder="e.g., a suspenseful thriller on a train, romantic comedy in Paris, space adventure with aliens...",
                 label_visibility="collapsed",
             )
-        with count_col:
-            top_k = st.number_input("Results", min_value=1, max_value=20, value=5, step=1)
-        with button_col:
-            submitted = st.button("Search", type="primary", use_container_width=True)
-
-    st.caption("Try natural language like `classic train robbery western` or `lonely robot searching for home`.")
+        with col2:
+            top_k = st.number_input("Results", min_value=1, max_value=20, value=5, step=1, label_visibility="collapsed")
+        
+        submitted = st.form_submit_button("🔍 Search Movies", type="primary", use_container_width=True)
+        
+        st.markdown(
+            '<div class="search-hint"><strong>Search tips:</strong> Use natural language to describe plot, genre, mood, setting, or themes</div>',
+            unsafe_allow_html=True,
+        )
 
     if submitted:
         if not query.strip():
