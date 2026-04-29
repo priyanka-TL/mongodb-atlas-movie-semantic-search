@@ -26,7 +26,7 @@ if not hf_token:
 # Create Hugging Face inference client
 hf_client = InferenceClient(token=hf_token)
 
-def get_embedding(text: str) -> list[float]:
+def generate_embedding(text: str) -> list[float]:
     embedding = hf_client.feature_extraction(
         text,
         model="sentence-transformers/all-MiniLM-L6-v2"
@@ -34,7 +34,7 @@ def get_embedding(text: str) -> list[float]:
 
     if hasattr(embedding, "tolist"):
         embedding = embedding.tolist()
-        print("Embedding converted to list using tolist() method.", embedding)
+        # print("Embedding converted to list using tolist() method.", embedding)
 
     if isinstance(embedding, list) and embedding and isinstance(embedding[0], list):
         return embedding[0]
@@ -44,8 +44,24 @@ def get_embedding(text: str) -> list[float]:
 
     raise ValueError("Unexpected embedding response format from Hugging Face API")
     
-get_embedding('freeCodeCamp is awesome!')
+generate_embedding('freeCodeCamp is awesome!')
 
 for doc in collection.find({'plot': {'$exists': True}}).limit(50):
-    doc['plot_embedding_hf'] = get_embedding(doc['plot'])
+    doc['plot_embedding_hf'] = generate_embedding(doc['plot'])
     collection.replace_one({'_id': doc['_id']}, doc)
+
+query = "Imaginary characters from outer space at war"
+
+results = collection.aggregate([
+    {
+        "$vectorSearch": {
+            "queryVector": generate_embedding(query),
+            "path": "plot_embedding_hf",
+            "numCandidates": 100,
+            "limit": 4,
+            "index": "plotSemanticSearch"
+        }
+    }])
+
+for document in results:
+    print(f'Movie Name: {document["title"]},\nMovie Plot: {document["plot"]}\n')
